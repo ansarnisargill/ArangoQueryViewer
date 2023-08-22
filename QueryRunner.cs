@@ -16,9 +16,16 @@ namespace AQLQueryRunner
         public static async Task<List<T>> QueryGraph(string verticesCollection,
             string graphCollection,
             int level,
-            string[] allowedKeys)
+            string[] allowedKeys,
+            QueryFilter[] filters,
+            string innerQueryOptions = ""
+            )
         {
-            var levelQuery = ConstructNeighbourLevelQuery(level, graphCollection);
+            var levelQuery = ConstructNeighbourLevelQuery(
+                level,
+                graphCollection,
+               filters,
+                innerQueryOptions);
             var query = $"""
                     FOR item IN {verticesCollection}
                     FILTER item._key IN [{FormatAllowedKeys(allowedKeys)}]
@@ -50,45 +57,31 @@ namespace AQLQueryRunner
             return val.Substring(0, val.Length - 1);
         }
 
-        private static string ConstructNeighbourLevelQuery(int level, string graphName)
+        private static string ConstructNeighbourLevelQuery(int level, string graphName, QueryFilter[] filters, string innerQueryOptions = "")
         {
             var queries = new List<string>();
-            var innerQueryOptions = """{ bfs: true, uniqueEdges: "path" }""";
+            if (string.IsNullOrEmpty(innerQueryOptions))
+            {
+                innerQueryOptions = """{ bfs: true, uniqueEdges: "path" }""";
+            }
 
             for (var i = level; i > 0; i--)
             {
-                var filter = $"""
-                 v{i}.type != "type" OR v{i}.field != ""
-                 """;
+                var filter = GetFilterCondition(filters, i);
+                var returnStatement = i == level ?
+                    $"RETURN v{i}" :
+                    $"""RETURN MERGE(v{i}, {GetResultShape(NEIGHBOR_NAME_PREFIX + (i + 1))})""";
 
-                if (i == level)
-                {
-                    queries.Add($"""
+                queries.Add($"""
                   LET {NEIGHBOR_NAME_PREFIX + i} = (
                             FOR v{i} IN 1..1 ANY neighborId{i - 1} GRAPH "{graphName}"
                             OPTIONS {innerQueryOptions}
-                            FILTER {filter}
+                            {filter}
                             LET neighborId{i} = v{i}._id
                                 PASTE_TEMPLATE
-                            RETURN v{i}
+                            {returnStatement}
                         )
                 """);
-                }
-                else
-                {
-                    queries.Add($"""
-                  LET {NEIGHBOR_NAME_PREFIX + i} = (
-                            FOR v{i} IN 1..1 ANY neighborId{i - 1} GRAPH "{graphName}"
-                            OPTIONS {innerQueryOptions}
-                            FILTER {filter}
-                            LET neighborId{i} = v{i}._id
-                                PASTE_TEMPLATE
-                            RETURN MERGE(v{i}, {GetResultShape(NEIGHBOR_NAME_PREFIX + (i + 1))})
-                        )
-                """);
-                }
-
-
             }
 
 
@@ -99,6 +92,84 @@ namespace AQLQueryRunner
                 compiledQuery = q;
             });
             return compiledQuery;
+        }
+
+        private static string GetFilterCondition(QueryFilter[] filters, int level)
+        {
+            var parsedFilter = "";
+            if (filters != null || filters.Count() > 0)
+            {
+
+                filters.ToList().ForEach(f =>
+                {
+                    parsedFilter += $""" {f.PreviousCondition.GetSymbol()} v{level}.{f.PropertyName} {f.Operation.GetSymbol()} "{f.CompareTo}" """;
+                });
+                parsedFilter = "FILTER" + parsedFilter;
+            }
+            return parsedFilter;
+        }
+    }
+
+    public class QueryFilter
+    {
+        public Conditions PreviousCondition { get; set; } = Conditions.NONE;
+        public string PropertyName { get; set; }
+        public FilterOperators Operation { get; set; }
+        public string CompareTo { get; set; }
+    }
+    public enum FilterOperators
+    {
+        Equal,
+        NotEqual,
+        GreaterThan,
+        GreaterThanOrEqual,
+        LessThan,
+        LessThanOrEqual
+    }
+    public enum Conditions
+    {
+        NONE,
+        OR,
+        AND
+    }
+    public static class FilterOperatorsExtensions
+    {
+        public static string GetSymbol(this FilterOperators val)
+        {
+            switch (val)
+            {
+                case FilterOperators.Equal:
+                    return "==";
+                case FilterOperators.NotEqual:
+                    return "!=";
+                case FilterOperators.GreaterThan:
+                    return ">";
+                case FilterOperators.LessThan:
+                    return "<";
+                case FilterOperators.GreaterThanOrEqual:
+                    return ">=";
+                case FilterOperators.LessThanOrEqual:
+                    return "<=";
+                default:
+                    return "==";
+            }
+        }
+    }
+    public static class ConditionsExtensions
+    {
+        public static string GetSymbol(this Conditions val)
+        {
+            switch (val)
+            {
+                case Conditions.NONE:
+                    return "";
+                case Conditions.AND:
+                    return "AND";
+                case Conditions.OR:
+                    return "OR";
+                default:
+                    return "";
+            }
         }
     }
 }
