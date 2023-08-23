@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Text.Json;
 
 namespace AQLQueryRunner
 {
@@ -6,12 +8,12 @@ namespace AQLQueryRunner
     {
         static void Main(string[] args)
         {
-            QueryRunner<Root>.QueryGraph(
-                "mps_verts",
-                "mps_graph",
-                3,
-                new string[] { "A", "B" },
-                new QueryFilter[] {
+            var result = QueryRunner<Root>.QueryGraph(
+                 "mps_verts",
+                 "mps_graph",
+                 3,
+                 new string[] { "A", "B" },
+                 new QueryFilter[] {
                     new QueryFilter() {
                         PreviousCondition= Conditions.NONE ,
                         Operation = FilterOperators.NotEqual,
@@ -24,8 +26,9 @@ namespace AQLQueryRunner
                         PropertyName = "field",
                         CompareTo=""
                     }
-                }
-                ).Wait();
+                 }
+                 ).Result;
+            Console.Write(JsonSerializer.Serialize(result, new JsonSerializerOptions() { WriteIndented = true }));
         }
     }
 
