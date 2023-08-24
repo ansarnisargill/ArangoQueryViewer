@@ -13,7 +13,7 @@ namespace AQLQueryRunner
         public const string DB_URL = @"http://localhost:8529/";
         public const string NEIGHBOR_NAME_PREFIX = "neighboursLevel";
 
-        public static async Task<List<T>> QueryGraph(string verticesCollection,
+        public static async Task<List<T>> QueryGraph(
             string graphCollection,
             int level,
             string[] allowedKeys,
