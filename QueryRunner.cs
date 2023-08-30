@@ -15,23 +15,25 @@ namespace AQLQueryRunner
 
         public static async Task<List<T>> QueryGraph(
             string graphCollection,
+            string startVertexId,
             int level,
-            string[] allowedKeys,
+
             QueryFilter[] filters,
             string innerQueryOptions = ""
             )
         {
             var levelQuery = ConstructNeighbourLevelQuery(
-                level,
                 graphCollection,
                filters,
                 innerQueryOptions);
             var query = $"""
-                    FOR item IN {verticesCollection}
-                    FILTER item._key IN [{FormatAllowedKeys(allowedKeys)}]
-                    LET neighborId0 = item._id
-                    {levelQuery}
-                    LET itemWithNeighbors = MERGE(item, {GetResultShape("neighboursLevel1")})
+                    FOR v IN 1..{level}
+                    OUTBOUND 
+                    '{startVertexId}' 
+                    GRAPH '{graphCollection}'
+                    LET neighborId = v._id
+                        {levelQuery}
+                    LET itemWithNeighbors = MERGE(v, {GetResultShape("neighbours")})
                     RETURN {GetResultShape("itemWithNeighbors", "Result")}
                     """;
 
@@ -57,52 +59,34 @@ namespace AQLQueryRunner
             return val.Substring(0, val.Length - 1);
         }
 
-        private static string ConstructNeighbourLevelQuery(int level, string graphName, QueryFilter[] filters, string innerQueryOptions = "")
+        private static string ConstructNeighbourLevelQuery(string graphName, QueryFilter[] filters, string innerQueryOptions = "")
         {
-            var queries = new List<string>();
+
             if (string.IsNullOrEmpty(innerQueryOptions))
             {
                 innerQueryOptions = """{ bfs: true, uniqueEdges: "path" }""";
             }
+            var vertexVariableName = "vertex";
+            var filter = GetFilterCondition(filters, vertexVariableName);
 
-            for (var i = level; i > 0; i--)
-            {
-                var filter = GetFilterCondition(filters, i);
-                var returnStatement = i == level ?
-                    $"RETURN v{i}" :
-                    $"""RETURN MERGE(v{i}, {GetResultShape(NEIGHBOR_NAME_PREFIX + (i + 1))})""";
-
-                queries.Add($"""
-                  LET {NEIGHBOR_NAME_PREFIX + i} = (
-                            FOR v{i} IN 1..1 ANY neighborId{i - 1} GRAPH "{graphName}"
+            return $"""
+                  LET neighbours = (
+                            FOR {vertexVariableName} IN 1..1 ANY neighborId GRAPH "{graphName}"
                             OPTIONS {innerQueryOptions}
                             {filter}
-                            LET neighborId{i} = v{i}._id
-                                PASTE_TEMPLATE
-                            {returnStatement}
+                            RETURN {vertexVariableName}
                         )
-                """);
-            }
-
-
-            var compiledQuery = "";
-            queries.ForEach(q =>
-            {
-                q = q.Replace("PASTE_TEMPLATE", compiledQuery);
-                compiledQuery = q;
-            });
-            return compiledQuery;
+                """;
         }
 
-        private static string GetFilterCondition(QueryFilter[] filters, int level)
+        private static string GetFilterCondition(QueryFilter[] filters, string vertexVariableName)
         {
             var parsedFilter = "";
             if (filters != null || filters.Count() > 0)
             {
-
                 filters.ToList().ForEach(f =>
                 {
-                    parsedFilter += $""" {f.PreviousCondition.GetSymbol()} v{level}.{f.PropertyName} {f.Operation.GetSymbol()} "{f.CompareTo}" """;
+                    parsedFilter += $""" {f.PreviousCondition.GetSymbol()} {vertexVariableName}.{f.PropertyName} {f.Operation.GetSymbol()} "{f.CompareTo}" """;
                 });
                 parsedFilter = "FILTER" + parsedFilter;
             }

@@ -9,10 +9,9 @@ namespace AQLQueryRunner
         static void Main(string[] args)
         {
             var result = QueryRunner<Root>.QueryGraph(
-                 "mps_verts",
                  "mps_graph",
-                 3,
-                 new string[] { "A", "B" },
+                 "mps_verts/A",
+                 1,
                  new QueryFilter[] {
                     new QueryFilter() {
                         PreviousCondition= Conditions.NONE ,
