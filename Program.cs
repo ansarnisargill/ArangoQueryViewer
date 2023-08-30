@@ -11,7 +11,7 @@ namespace AQLQueryRunner
             var result = QueryRunner<Root>.QueryGraph(
                  "mps_graph",
                  "mps_verts/A",
-                 1,
+                 "mps_verts/F",
                  new QueryFilter[] {
                     new QueryFilter() {
                         PreviousCondition= Conditions.NONE ,

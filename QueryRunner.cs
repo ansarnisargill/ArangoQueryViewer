@@ -15,26 +15,20 @@ namespace AQLQueryRunner
 
         public static async Task<List<T>> QueryGraph(
             string graphCollection,
-            string startVertexId,
-            int level,
-
+            string startNodeId,
+            string endNodeId,
             QueryFilter[] filters,
             string innerQueryOptions = ""
             )
         {
-            var levelQuery = ConstructNeighbourLevelQuery(
-                graphCollection,
-               filters,
-                innerQueryOptions);
+           const string algoForTravesel = "K_SHORTEST_PATHS";
             var query = $"""
-                    FOR v IN 1..{level}
-                    OUTBOUND 
-                    '{startVertexId}' 
-                    GRAPH '{graphCollection}'
-                    LET neighborId = v._id
-                        {levelQuery}
-                    LET itemWithNeighbors = MERGE(v, {GetResultShape("neighbours")})
-                    RETURN {GetResultShape("itemWithNeighbors", "Result")}
+            FOR Paths 
+            IN ANY {algoForTravesel} 
+            '{startNodeId}' TO '{endNodeId}'
+            GRAPH "{graphCollection}"
+            RETURN DISTINCT
+            {GetResultShape("Paths.vertices[*]", "Result")}
                     """;
 
 
@@ -47,36 +41,6 @@ namespace AQLQueryRunner
         private static string GetResultShape(string resultProperty, string propertyName = "neighbors")
         {
             return "{ " + propertyName + ":  " + resultProperty + "}";
-        }
-        private static string FormatAllowedKeys(string[] allowedKeys)
-        {
-            var val = "";
-
-            foreach (var item in allowedKeys)
-            {
-                val += $"\"{item}\",";
-            }
-            return val.Substring(0, val.Length - 1);
-        }
-
-        private static string ConstructNeighbourLevelQuery(string graphName, QueryFilter[] filters, string innerQueryOptions = "")
-        {
-
-            if (string.IsNullOrEmpty(innerQueryOptions))
-            {
-                innerQueryOptions = """{ bfs: true, uniqueEdges: "path" }""";
-            }
-            var vertexVariableName = "vertex";
-            var filter = GetFilterCondition(filters, vertexVariableName);
-
-            return $"""
-                  LET neighbours = (
-                            FOR {vertexVariableName} IN 1..1 ANY neighborId GRAPH "{graphName}"
-                            OPTIONS {innerQueryOptions}
-                            {filter}
-                            RETURN {vertexVariableName}
-                        )
-                """;
         }
 
         private static string GetFilterCondition(QueryFilter[] filters, string vertexVariableName)
