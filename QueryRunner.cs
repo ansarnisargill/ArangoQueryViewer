@@ -21,7 +21,9 @@ namespace AQLQueryRunner
             string innerQueryOptions = ""
             )
         {
+
            const string algoForTravesel = "K_SHORTEST_PATHS";
+
             var query = $"""
             FOR Paths 
             IN ANY {algoForTravesel} 
@@ -29,8 +31,7 @@ namespace AQLQueryRunner
             GRAPH "{graphCollection}"
             RETURN DISTINCT
             {GetResultShape("Paths.vertices[*]", "Result")}
-                    """;
-
+            """;
 
             using var systemDbTransport = HttpApiTransport.UsingNoAuth(new Uri(DB_URL));
             var adb = new ArangoDBClient(systemDbTransport);
@@ -61,9 +62,9 @@ namespace AQLQueryRunner
     public class QueryFilter
     {
         public Conditions PreviousCondition { get; set; } = Conditions.NONE;
-        public string PropertyName { get; set; }
+        public required string PropertyName { get; set; }
         public FilterOperators Operation { get; set; }
-        public string CompareTo { get; set; }
+        public required string CompareTo { get; set; }
     }
     public enum FilterOperators
     {
