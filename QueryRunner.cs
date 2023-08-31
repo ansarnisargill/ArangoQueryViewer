@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Reflection;
 
 namespace AQLQueryRunner
 {
@@ -13,7 +15,7 @@ namespace AQLQueryRunner
         public const string DB_URL = @"http://localhost:8529/";
         public const string NEIGHBOR_NAME_PREFIX = "neighboursLevel";
 
-        public static async Task<List<T>> QueryGraph(
+        public static async Task<List<T[]>> QueryGraph(
             string graphCollection,
             string startNodeId,
             string endNodeId,
@@ -22,7 +24,7 @@ namespace AQLQueryRunner
             )
         {
 
-           const string algoForTravesel = "K_SHORTEST_PATHS";
+            const string algoForTravesel = "K_SHORTEST_PATHS";
 
             var query = $"""
             FOR Paths 
@@ -30,18 +32,63 @@ namespace AQLQueryRunner
             '{startNodeId}' TO '{endNodeId}'
             GRAPH "{graphCollection}"
             RETURN DISTINCT
-            {GetResultShape("Paths.vertices[*]", "Result")}
+            Paths.vertices[*]
             """;
 
             using var systemDbTransport = HttpApiTransport.UsingNoAuth(new Uri(DB_URL));
             var adb = new ArangoDBClient(systemDbTransport);
-            var response = await adb.Cursor.PostCursorAsync<T>(query);
+            var response = await adb.Cursor.PostCursorAsync<T[]>(query);
             var result = response.Result.ToList();
             return result;
         }
-        private static string GetResultShape(string resultProperty, string propertyName = "neighbors")
+
+        public static async Task<string> GetFormattedJson(List<T[]> paths)
         {
-            return "{ " + propertyName + ":  " + resultProperty + "}";
+            var json = "[{";
+            paths.ForEach(p =>
+            {
+                var pathJson = "";
+                p.Reverse().ToList().ForEach(x =>
+                {
+                    var y = SingleNodeSerialization(x);
+                    if (pathJson != "")
+                    {
+                        pathJson = $",{pathJson}";
+                    }
+                    y = y.Replace("PLACEHOLDER", pathJson);
+
+                    pathJson = y;
+                });
+                json += pathJson + ",";
+            });
+            json = json.Substring(0, json.Length - 1);
+            json += "]}";
+            return json;
+        }
+
+        private static string SingleNodeSerialization(T Node)
+        {
+            var json = "";
+            Type type = Node.GetType();
+            FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+            foreach (var field in fields)
+            {
+                if (field.Name == "_id")
+                {
+                    json += $"""
+                        "{field.GetValue(Node)}":
+                        """;
+                    json += "{";
+                }
+                object value = field.GetValue(Node);
+                json += $"""
+                    "{field.Name}":"{value}",
+                    """;
+            }
+            json = json.Substring(0, json.Length - 1);
+            json += " PLACEHOLDER }";
+            return json;
         }
 
         private static string GetFilterCondition(QueryFilter[] filters, string vertexVariableName)
