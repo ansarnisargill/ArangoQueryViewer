@@ -62,7 +62,7 @@ namespace AQLQueryRunner
                 json += pathJson + ",";
             });
             json = json.Substring(0, json.Length - 1);
-            json += "]}";
+            json += "}]";
             return json;
         }
 
