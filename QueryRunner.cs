@@ -7,10 +7,12 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Reflection;
+using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 namespace AQLQueryRunner
 {
-    public class QueryRunner<T>
+    public class QueryRunner<T> where T : NodeParent
     {
         public const string DB_URL = @"http://localhost:8529/";
         public const string NEIGHBOR_NAME_PREFIX = "neighboursLevel";
@@ -44,50 +46,108 @@ namespace AQLQueryRunner
 
         public static async Task<string> GetFormattedJson(List<T[]> paths)
         {
-            var json = "[{";
+            var json = "{";
+
+            var largestDepth = 1;
             paths.ForEach(p =>
             {
-                var pathJson = "";
-                p.Reverse().ToList().ForEach(x =>
+                if (largestDepth < p.Length)
                 {
-                    var y = SingleNodeSerialization(x);
-                    if (pathJson != "")
-                    {
-                        pathJson = $",{pathJson}";
-                    }
-                    y = y.Replace("PLACEHOLDER", pathJson);
-
-                    pathJson = y;
-                });
-                json += pathJson + ",";
+                    largestDepth = p.Length;
+                }
             });
+
+            for (var i = 0; i < largestDepth; i++)
+            {
+                List<T> itemsAtCurrentIndex = new List<T> { };
+                paths.ForEach(p =>
+                {
+                    try
+                    {
+                        var obj = p[i];
+                        if (i != 0)
+                        {
+                            obj.parent_id = p[i - 1]._id;
+                        }
+
+                        if (obj == null)
+                        {
+                            return;
+                        }
+
+                        if (!itemsAtCurrentIndex.Contains(obj))
+                        {
+                            itemsAtCurrentIndex.Add(obj);
+                        }
+                    }
+                    catch { }
+                });
+
+                itemsAtCurrentIndex.GroupBy(x => x.parent_id).ToList().ForEach(item =>
+                {
+                    var innerItems = item.ToList();
+                    if (i == 0)
+                    {
+                        json += SingleNodeSerialization(innerItems.First(), i);
+                        json += ",";
+                    }
+                    else
+                    {
+                        var levelJson = "";
+                        innerItems.ForEach(inneritem =>
+                        {
+                            levelJson += SingleNodeSerialization(inneritem, i);
+                            levelJson += ",";
+                        });
+                        levelJson = levelJson.Substring(0, levelJson.Length - 1);
+                        json = json.Replace($"{item.Key}_PLACEHOLDER_{i - 1}", $",{levelJson}");
+                    }
+
+                });
+            }
+
+
+            var pieces = json.Split(" ");
+            for (int i = 0; i < pieces.Length; i++)
+            {
+                if (pieces[i].Contains("PLACEHOLDER"))
+                {
+                    pieces[i] = "";
+                }
+            }
+            json = string.Join("", pieces);
+
             json = json.Substring(0, json.Length - 1);
-            json += "}]";
+            json += "}";
             return json;
         }
 
-        private static string SingleNodeSerialization(T Node)
+        private static string SingleNodeSerialization(T Node, int level)
         {
-            var json = "";
             Type type = Node.GetType();
             FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
+            string idValue = (string)fields.First(x => x.Name == "_id").GetValue(Node);
+            var json = $"""
+                "{idValue}":
+                """;
+            json += "{";
+
             foreach (var field in fields)
             {
-                if (field.Name == "_id")
+                if (field.Name == "parent_id")
                 {
-                    json += $"""
-                        "{field.GetValue(Node)}":
-                        """;
-                    json += "{";
+                    continue;
                 }
+
                 object value = field.GetValue(Node);
                 json += $"""
                     "{field.Name}":"{value}",
                     """;
             }
             json = json.Substring(0, json.Length - 1);
-            json += " PLACEHOLDER }";
+            json += $" {idValue}_PLACEHOLDER_{level} ";
+            json += "}";
             return json;
         }
 

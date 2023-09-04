@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection.Metadata;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AQLQueryRunner
 {
@@ -32,10 +34,27 @@ namespace AQLQueryRunner
         }
     }
 
-    public class Node
+    public class Node : NodeParent
     {
-        public string _id;
         public string _key;
         public string _rev;
+    }
+    public class NodeParent
+    {
+        public string _id;
+
+        [JsonIgnore]
+        public string parent_id = "";
+
+        public override bool Equals(object obj)
+        {
+            NodeParent item = (NodeParent)obj;
+            return _id == item._id && parent_id == item.parent_id;
+        }
+
+        public override int GetHashCode()
+        {
+            return _id.GetHashCode();
+        }
     }
 }
