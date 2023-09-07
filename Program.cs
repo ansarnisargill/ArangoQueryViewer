@@ -1,8 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Reflection.Metadata;
+﻿using ArangoDBNetStandard;
+using ArangoDBNetStandard.Transport.Http;
+using System;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace AQLQueryRunner
 {
@@ -10,28 +9,15 @@ namespace AQLQueryRunner
     {
         static void Main(string[] args)
         {
-            var result = QueryRunner<Node>.QueryGraph(
-                 "mps_graph",
-                 "mps_verts/A",
-                 "mps_verts/B",
-                 new QueryFilter[] {
-                    new QueryFilter() {
-                        PreviousCondition= Conditions.NONE ,
-                        Operation = FilterOperators.NotEqual,
-                        PropertyName = "type",
-                        CompareTo="type"
-                    },
-                    new QueryFilter() {
-                        PreviousCondition= Conditions.OR ,
-                        Operation = FilterOperators.NotEqual,
-                        PropertyName = "field",
-                        CompareTo=""
-                    }
-                 }
-                 ).Result;
-            var output = QueryRunner<Node>.GetStepWisePaths(result).Result;
-            var json = JsonSerializer.Serialize(output);
-            Console.Write(json);
+            using var systemDbTransport = HttpApiTransport.UsingNoAuth(new Uri(@"http://localhost:8529/"));
+            {
+                var adb = new ArangoDBClient(systemDbTransport);
+                var result = QueryRunner<Node>.QueryGraph(adb, "mps_graph", "mps_verts/A", "mps_verts/B").Result;
+                var output = QueryRunner<Node>.GetStepWisePaths(result).Result;
+                var json = JsonSerializer.Serialize(output);
+                Console.Write(json);
+            }
+
         }
     }
 
